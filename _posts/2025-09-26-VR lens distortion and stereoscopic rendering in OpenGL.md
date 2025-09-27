@@ -8,7 +8,7 @@ tags: [OpenGL, Graphics]
 ## Introduction
 Earlier this year, some classmates and I teamed up to build and program our own VR headset, along with a VR Minecraft clone written entirely in C.
 ![image](attachments/vr-lens-distortion/vr-headset-me.png)
-Although there were many crazy engineering feats involved in putting this all together, this article will only cover a tiny fraction of the process: how to modify your existing 3D rendering pipeline to add support for VR goggles.
+Although there were many crazy engineering feats involved in putting this all together, this post will only cover a tiny fraction of the process: how to modify your existing 3D rendering pipeline to add support for VR goggles.
 ![image](attachments/vr-lens-distortion/distortion.png)
 
 Although I'll be going into OpenGL specifics, you should still be able to follow along if your project uses a different rendering API.
@@ -88,7 +88,7 @@ static void postProcess_initFramebuffer(postProcess_buffer_t *renderbuffer, int 
 }
 ```
 
-Now when we draw, we just have to bind each frame buffer and offset the camera position.
+Now when we draw, we just have to bind each frame buffer and offset the camera position. Something to remember is you must update your projection matrix to use the new halved aspect ratio when rendering to each frame buffer.
 
 ```c
 static void render_with_postprocessing(world_t *world, camera_t *camera, const player_t *player) {
@@ -153,7 +153,93 @@ void main()
     }
 }
 ``` 
+
 Putting everything together, we achieve stereoscopic rendering!
 ![image](attachments/vr-lens-distortion/no-distort.png)
 
 ## VR Lens Distortion
+### Overview
+The only issue now with the current setup is that the lenses within the headset slightly distort the display - akin to the **pincushion** distortion below. To counteract this, we apply a pre-distortion within our post processing shader - so when viewed through the lenses, the optical distortion and pre-distortion cancel out, resulting in a correct-looking image.
+
+![image](attachments/vr-lens-distortion/radial-distortions-1024x352.png)
+Image source: <https://learnopencv.com/understanding-lens-distortion/>
+
+We can implement this by making some modifications to the fragment shader we used to sample the left and right textures and apply a barrel distortion to alter the texture coordinate used for sampling.
+
+### Barrel Distortion
+<!-- To help with the intuition behind how the maths works, here's an exaggerated version of what we're trying to achieve. The distortion strength is set very high.
+![image](attachments/vr-lens-distortion/enhanced-distortion.png)
+ -->
+Given an output pixel coordinate, we want to find the texture coordinate to sample the original texture with such that repeating this for every output pixel produces a radial distortion effect.
+
+If you imagine the barrel distortion image above as our resulting display, something you might be able to figure out is that two pixels that are close to eachother in the centre share a much closer texture coordinate in the original input than two pixels that are close to eachother near the edges.
+
+A simple way of replicating this starts with normalising our output coordinate to be in the range `[-1, 1]` with the point `(0, 0)` being the centre and let the radius of the normalised vector from the centre be `r`. We distort this `r` outward to a new `r'` with the simple cubic `r' = r * (1 + k * r^2)` for some `k > 0`. We can then sample the texture coordinate that corresponds to the new point with radius `r'`.
+
+The value of `k` here is the **distortion strength**. For larger `k`, the distorted radius becomes much larger than the original radius - hence producing a greater distortion.
+
+Playing around with higher order polynomials can give you a better fit for your lenses, however something to be aware of is that this polynomial should **not** have a constant term unless you want some funny graphics.
+
+![image](attachments/vr-lens-distortion/weird-pinch.png)
+### Implementation
+Here is how the distortion for each image is calculated, using the same formula as above. The distortion strength is a uniform to allow for easier tuning.
+```glsl
+uniform float distortionStrength;
+
+vec2 distortEye(vec2 inTexCoords) {
+    vec2 normalizedCoords = inTexCoords * 2.0 - 1.0;
+
+    float r = length(normalizedCoords);
+
+    float r_distorted = r * (1.0 + distortionStrength * r * r);
+
+    vec2 distortedCoords;
+    if (r_distorted > 0.001) {
+        distortedCoords = normalizedCoords * (r_distorted / r);
+    }
+    else {
+        distortedCoords = normalizedCoords;
+    }
+
+    vec2 finalTexCoords = (distortedCoords + 1.0) / 2.0;
+    return finalTexCoords;
+}
+```
+When using the texture coordinates computed by this function, we need to check if they fall outside the valid `[0, 1]` range - if so then we just set the pixel to black.
+We also have uniforms to control the centre and scale of the images produced. If you want further control you could even have different uniforms for each individual eye.
+```glsl
+// will be between 0 and 1, representing the center of the image produced.
+uniform float centerX;
+uniform float centerY;
+
+uniform float scale;
+
+void main()
+{
+    if (TexCoords.x >= 0.5) {
+        vec2 outTexCoords = distortEye(vec2(2 * (TexCoords.x + (centerX - 0.5) - 0.5) * scale, (TexCoords.y + centerY - 0.5) * scale));
+        if (outTexCoords.x > 1.0 || outTexCoords.x < 0.0 ||
+            outTexCoords.y > 1.0 || outTexCoords.y < 0.0)
+        {
+            FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            FragColor = texture(rightTexture, outTexCoords);
+        }
+    } else {
+        vec2 outTexCoords = distortEye(vec2((2 * (TexCoords.x - (centerX - 0.5)) * scale), (TexCoords.y + centerY - 0.5) * scale));
+        if (outTexCoords.x > 1.0 || outTexCoords.x < 0.0 ||
+            outTexCoords.y > 1.0 || outTexCoords.y < 0.0)
+        {
+            FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            FragColor = texture(leftTexture, outTexCoords);    
+        }
+    }
+}
+```
+
+Thanks for reading! Once again the full source code can be found [here](https://github.com/lxkast/vr-voxel-game).
