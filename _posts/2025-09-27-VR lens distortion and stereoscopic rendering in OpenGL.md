@@ -1,6 +1,6 @@
 ---
 title: "VR Lens Distortion and Stereoscopic Rendering in OpenGL"
-date: 2025-09-26
+date: 2025-09-27
 categories: [OpenGL]
 tags: [OpenGL, Graphics]
 ---
