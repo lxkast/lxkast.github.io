@@ -84,6 +84,13 @@
     "outcome": "collected"
   },
   {
+    "id": "medium-20-soft-visibility-sol",
+    "label": "Medium skin · shallow elbow · softer visibility · seed 20 · GPT-6.1 Sol",
+    "file": "seed-20-soft-visibility-sol.json",
+    "seed": 20,
+    "outcome": "collected"
+  },
+  {
     "id": "surface-dark-18",
     "label": "Surface controller · fixed target · dark skin · seed 18",
     "file": "seed-18-surface-controller.json",
