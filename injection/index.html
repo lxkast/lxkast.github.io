@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Injection Lab</title>
+<script type="importmap">
+{"imports":{"three":"./three/build/three.module.js","three/addons/":"./three/examples/jsm/"}}
+</script>
+<style>
+:root{color-scheme:dark;--bg:#101719;--panel:#171f22;--line:#2b3a3f;--muted:#99adb1;--accent:#80e0d0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#eef7f6;font:14px/1.5 "DM Sans",system-ui,sans-serif}
+main{margin:auto;max-width:1440px;padding:24px 32px 36px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:21px;border-bottom:1px solid var(--line);padding:0 0 16px;gap:18px}
+header .right{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end}
+header label{color:var(--muted);display:flex;align-items:center;gap:8px}
+select{font:inherit;color:#eef7f6;background:#223136;border:1px solid #3d5359;border-radius:6px;padding:7px 10px;max-width:min(58vw,380px)}
+h1{margin:0;font-size:25px;font-weight:620;letter-spacing:-.03em}
+h2{font-size:14px;font-weight:600;margin:0}
+header p{color:var(--muted);margin:2px 0 0}
+#runStatus{white-space:nowrap;color:var(--accent);font-variant-numeric:tabular-nums}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(295px, .39fr);gap:20px;align-items:start}
+.panel{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+.bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;padding:10px 14px;gap:10px}
+small{color:var(--muted);font:11px/1.3 ui-monospace,monospace}
+.view canvas{display:block;width:100%;height:auto;aspect-ratio:4/3;background:#32444a}
+#spectator{aspect-ratio:16/10;cursor:grab;touch-action:none}
+#spectator:active{cursor:grabbing}
+.feed-stack{display:grid;gap:14px}
+.transport{display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding:12px 14px}
+.transport input{flex:1;accent-color:var(--accent);min-width:65px}
+.controls{margin-top:18px;padding:14px;display:grid;gap:12px}
+.control-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+button{font:inherit;border:1px solid #3d5359;border-radius:6px;background:#223136;color:#eef7f6;padding:6px 11px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.42;cursor:default}
+.primary{background:#86d9cc;color:#122b2b;border-color:#86d9cc;font-weight:650}
+.group{display:inline-flex;gap:4px}
+kbd{color:var(--muted);font-size:11px;margin-left:3px}
+#telemetry{margin:0;color:var(--muted);font:12px/1.5 ui-monospace,monospace}
+#notice{min-height:21px;color:var(--accent);margin:0}
+#notice.error{color:#f4ad9f}
+[hidden]{display:none!important}
+@media(max-width:760px){main{padding:16px}.layout{grid-template-columns:1fr}.feed-stack{grid-template-columns:1fr 1fr}.bar{padding:8px}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Injection Lab</h1><p id="subtitle">Needle placement simulator</p></div>
+    <div class="right"><label id="galleryWrap" hidden>Experiment <select id="gallery" aria-label="Choose experiment"></select></label>
+      <div id="runStatus" aria-live="polite">Loading</div></div>
+  </header>
+  <div class="layout">
+    <div>
+      <section class="panel view">
+        <div class="bar"><h2>Workbench</h2><button id="focusNeedle" type="button">Focus needle</button><label><input type="checkbox" id="hiddenNeedle" checked> Hidden needle <span style="color:#ff5dbb">●</span></label><label><input type="checkbox" id="veins"> Vein geometry</label><small>Drag to orbit · scroll to zoom</small></div>
+        <canvas id="spectator" aria-label="Orbitable workbench view"></canvas>
+        <div class="transport">
+          <button id="play" aria-label="Play replay">Play</button>
+          <input id="timeline" type="range" min="0" max="0" step="0.01" value="0" aria-label="Replay position">
+          <small id="frameCount">0 / 0</small>
+        </div>
+      </section>
+      <section class="panel controls" aria-label="Robot controls">
+        <div id="pendant" hidden>
+          <div class="control-row" id="jog"></div>
+          <div class="control-row" style="margin-top:10px">
+            <button data-action="advance .035">Advance <kbd>Space</kbd></button>
+            <button data-action="advance -.035">Retract <kbd>X</kbd></button>
+            <button class="primary" data-action="collect">Collect <kbd>Enter</kbd></button>
+            <button data-action="done">Stop</button>
+            <button data-reset="/reset">Reset seed</button>
+            <button data-reset="/new">New arm</button>
+            <label><input type="checkbox" id="fine"> Fine jog</label>
+          </div>
+        </div>
+        <p id="telemetry"></p>
+        <p id="notice" role="status"></p>
+      </section>
+    </div>
+    <aside class="feed-stack">
+      <section class="panel view"><div class="bar"><h2>Overhead RGB</h2><small id="overheadInfo"></small></div><canvas id="overhead" width="1024" height="768" aria-label="Overhead RGB camera"></canvas></section>
+      <section class="panel view"><div class="bar"><h2>Needle RGB</h2><small>512 × 384</small></div><canvas id="needle" width="512" height="384" aria-label="Needle-mounted RGB camera"></canvas></section>
+    </aside>
+  </div>
+</main>
+<script type="module">
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { interpolatePose, setup } from './scene.js';
+
+const $ = id => document.getElementById(id);
+const run = new URLSearchParams(location.search).get('run');
+const catalog = await fetch('./catalog.json').then(response => response.json());
+const selected = catalog.find(entry => entry.id === run) ?? catalog[0];
+const state = await fetch(`./replays/${selected.file}`).then(response => response.json());
+state.live = false;
+state.run_id = selected.id;
+let rig = setup(state.scene, document.createElement('canvas'));
+for (const entry of catalog) {
+  const option = document.createElement('option');
+  option.value = entry.id;
+  option.textContent = `${entry.label} · ${entry.outcome ?? 'in progress'}`;
+  $('gallery').append(option);
+}
+$('gallery').value = state.run_id;
+$('gallery').onchange = event => { location.search = `?run=${encodeURIComponent(event.target.value)}`; };
+$('galleryWrap').hidden = false;
+start(state);
+
+function start(initial) {
+  let state = initial;
+  let index = state.frames.length - 1;
+  let animation = null;
+  let playbackPosition = index;
+  const stepDuration = 850;
+  let busy = false;
+  let sceneReady = false;
+  let displayedFrame = state.frames[index];
+  let focused = false;
+  let savedView = null;
+  const spectator = $('spectator');
+  const copy = (name, w, h) => {
+    const canvas = $(name);
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    canvas.getContext('2d').drawImage(rig.render(name, w, h), 0, 0);
+  };
+  const drawSpectator = () => {
+    if (!sceneReady || !spectator.clientWidth) return;
+    const w = Math.min(1440, Math.round(spectator.clientWidth * Math.min(1.5, devicePixelRatio)));
+    copy('spectator', w, Math.round(w / 1.6));
+  };
+  const orbit = new OrbitControls(rig.spectator, spectator);
+  orbit.target.copy(rig.target);
+  orbit.maxPolarAngle = Math.PI / 2.02;
+  orbit.minDistance = 2;
+  orbit.maxDistance = 11;
+  orbit.update();
+  orbit.addEventListener('change', drawSpectator);
+  new ResizeObserver(drawSpectator).observe(spectator);
+  $('focusNeedle').onclick = () => {
+    if (focused) {
+      focused = false;
+      rig.spectator.position.copy(savedView.position);
+      orbit.target.copy(savedView.target);
+      $('focusNeedle').textContent = 'Focus needle';
+    } else {
+      savedView = { position: rig.spectator.position.clone(), target: orbit.target.clone() };
+      focused = true;
+      const target = orbit.target.clone().set(...displayedFrame.tip);
+      const offset = rig.spectator.position.clone().sub(orbit.target).normalize().multiplyScalar(1.25);
+      rig.spectator.position.copy(target).add(offset);
+      orbit.target.copy(target);
+      $('focusNeedle').textContent = 'Full arm';
+    }
+    orbit.update();
+    drawSpectator();
+  };
+  function showVeins() {
+    if ($('veins').checked) rig.spectator.layers.enable(1);
+    else rig.spectator.layers.disable(1);
+    drawSpectator();
+  }
+  $('veins').onchange = showVeins;
+  function showHiddenNeedle() {
+    if ($('hiddenNeedle').checked) rig.spectator.layers.enable(3);
+    else rig.spectator.layers.disable(3);
+    drawSpectator();
+  }
+  $('hiddenNeedle').onchange = showHiddenNeedle;
+  showHiddenNeedle();
+
+  const jogs = [
+    ['X', 'ArrowLeft', 'ArrowRight', .045, 0],
+    ['Z', 'ArrowUp', 'ArrowDown', .045, 2],
+    ['Height', 's', 'w', .033, 1],
+    ['Yaw', 'a', 'd', .085, 3],
+    ['Pitch', 'q', 'e', .063, 4],
+  ];
+  const names = {ArrowLeft:'←', ArrowRight:'→', ArrowUp:'↑', ArrowDown:'↓'};
+  const keyboard = new Map();
+  for (const [label, minusKey, plusKey, amount, axis] of jogs) {
+    const group = document.createElement('span');
+    group.className = 'group';
+    for (const [sign, key] of [[-1, minusKey], [1, plusKey]]) {
+      const button = document.createElement('button');
+      button.innerHTML = `${label} ${sign < 0 ? '−' : '+'} <kbd>${names[key] ?? key.toUpperCase()}</kbd>`;
+      const run = fine => {
+        const delta = [0, 0, 0, 0, 0];
+        delta[axis] = sign * amount * (fine || $('fine').checked ? .25 : 1);
+        act(`move ${delta.join(' ')}`);
+      };
+      button.addEventListener('click', event => run(event.shiftKey));
+      button.dataset.pose = '';
+      keyboard.set(key, run);
+      group.append(button);
+    }
+    $('jog').append(group);
+  }
+  const advance = (sign, fine) => act(`advance ${sign * (fine || $('fine').checked ? .004 : .025)}`);
+  $('overhead').onclick = event => {
+    if (!state.live) return;
+    const camera = rig.calibration.overhead;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width - .5) * camera.width + camera.position[0];
+    const z = ((event.clientY - bounds.top) / bounds.height - .5) * camera.height + camera.position[2];
+    act(`confirm ${x.toFixed(4)} ${z.toFixed(4)}`);
+  };
+  keyboard.set(' ', fine => advance(1, fine));
+  keyboard.set('x', fine => advance(-1, fine));
+  keyboard.set('Enter', () => act('collect'));
+  $('pendant').hidden = !state.live;
+
+  function controls() {
+    const latest = index === state.frames.length - 1;
+    const complete = state.frames.at(-1).done;
+    document.querySelectorAll('[data-action],[data-pose]').forEach(button => {
+      button.disabled = busy || animation !== null || !latest || complete;
+    });
+    document.querySelectorAll('[data-reset]').forEach(button => { button.disabled = busy; });
+  }
+  function drawPose(frame, preview = false) {
+    displayedFrame = frame;
+    rig.pose(frame);
+    if (focused) {
+      const target = orbit.target.clone().set(...frame.tip);
+      rig.spectator.position.add(target.clone().sub(orbit.target));
+      orbit.target.copy(target);
+      orbit.update();
+    }
+    sceneReady = true;
+    drawSpectator();
+    for (const name of ['overhead', 'needle']) {
+      const [width, height] = rig.calibration[name].resolution;
+      const renderWidth = preview ? Math.max(4, Math.min(width, Math.ceil($(name).clientWidth / 4) * 4)) : width;
+      copy(name, renderWidth, renderWidth * height / width);
+    }
+  }
+  function showStep(i) {
+    index = i;
+    const frame = state.frames[i];
+    $('overheadInfo').textContent = state.live ? 'Click the vein to confirm' : rig.calibration.overhead.resolution.join(' × ');
+    $('overhead').style.cursor = state.live && !frame.done ? 'crosshair' : '';
+    $('subtitle').textContent = `Needle placement simulator · seed ${state.seed}`;
+    $('timeline').max = state.frames.length - 1;
+    $('timeline').value = index;
+    $('frameCount').textContent = `${index} / ${state.frames.length - 1}`;
+    $('play').disabled = state.frames.length < 2;
+    $('runStatus').textContent = frame.done ? frame.outcome : `${frame.steps_left} steps left`;
+    const fmt = n => n.toFixed(3);
+    const mm = state.scene.mm_per_unit;
+    const coordinates = values => values.map(value => mm ? (value * mm).toFixed(1) : fmt(value)).join(', ');
+    $('telemetry').textContent = `Tip [${coordinates(frame.tip)}]${mm ? ' mm' : ''} · yaw ${fmt(frame.yaw)} · pitch ${fmt(frame.pitch)}`;
+    const angle = frame.angle_degrees == null ? '' : ` · shaft to vein ${frame.angle_degrees.toFixed(1)}°`;
+    const entry = frame.insertion_angle_degrees == null ? '' : ` · entry along shaft ${frame.insertion_angle_degrees.toFixed(1)}°`;
+    const target = frame.confirmed_target_xz;
+    const hit = frame.contact;
+    const contact = hit ? ` · ${hit.part} contact at [${coordinates(hit.point)}] mm${hit.sweep_fraction == null ? '' : `, ${Math.round(hit.sweep_fraction * 100)}% through action`}` : '';
+    $('notice').textContent = frame.done ? `Reward ${frame.reward.toFixed(3)}${angle}${entry}${contact}`
+      : target ? `Confirmed target [${coordinates(target)}] mm` : '';
+    $('notice').classList.remove('error');
+    controls();
+  }
+  function displayPosition(position, preview = false) {
+    const last = state.frames.length - 1;
+    const step = Math.floor(position);
+    const progress = position - step;
+    if (step !== index) showStep(step);
+    $('timeline').value = position;
+    if (progress > 0 && step < last) {
+      const frame = interpolatePose(state.frames[step], state.frames[step + 1], progress);
+      const mm = state.scene.mm_per_unit;
+      $('frameCount').textContent = `${step} → ${step + 1} · ${Math.round(progress * 100)}%`;
+      $('runStatus').textContent = `Moving: ${state.frames[step + 1].action}`;
+      $('telemetry').textContent = `Tip [${frame.tip.map(v => (v * mm).toFixed(1)).join(', ')}] mm · yaw ${frame.yaw.toFixed(3)} · pitch ${frame.pitch.toFixed(3)}`;
+      drawPose(frame, preview);
+    } else {
+      showStep(step);
+      drawPose(state.frames[step], preview);
+    }
+  }
+  function seek(position) {
+    playbackPosition = position;
+    displayPosition(position);
+  }
+  function stopPlayback() {
+    if (animation !== null) cancelAnimationFrame(animation);
+    animation = null;
+    $('play').textContent = 'Play';
+    controls();
+  }
+  $('play').onclick = () => {
+    if (animation !== null) {
+      stopPlayback();
+      return;
+    }
+    const last = state.frames.length - 1;
+    if (playbackPosition === last) seek(0);
+    const startPosition = playbackPosition;
+    let started;
+    function tick(now) {
+      started ??= now;
+      playbackPosition = Math.min(last, startPosition + (now - started) / stepDuration);
+      if (playbackPosition === last) {
+        seek(last);
+        stopPlayback();
+        return;
+      }
+      displayPosition(playbackPosition, true);
+      animation = requestAnimationFrame(tick);
+    }
+    $('play').textContent = 'Pause';
+    animation = requestAnimationFrame(tick);
+    controls();
+  };
+  $('timeline').oninput = event => {
+    stopPlayback();
+    seek(Number(event.target.value));
+  };
+
+  async function request(path, body) {
+    if (busy || !state.live) return;
+    busy = true;
+    controls();
+    try {
+      const response = await fetch(path, {method: 'POST', body});
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      stopPlayback();
+      if (path === '/step') {
+        state.frames.push(data);
+      } else {
+        const position = rig.spectator.position.clone();
+        const target = orbit.target.clone();
+        const previous = rig;
+        state = data;
+        rig = setup(state.scene, document.createElement('canvas'));
+        focused = false;
+        savedView = null;
+        $('focusNeedle').textContent = 'Focus needle';
+        rig.spectator.position.copy(position);
+        orbit.object = rig.spectator;
+        orbit.target.copy(target);
+        orbit.update();
+        showVeins();
+        showHiddenNeedle();
+        previous.renderer.forceContextLoss();
+        previous.renderer.dispose();
+      }
+      seek(state.frames.length - 1);
+    } catch (error) {
+      $('notice').textContent = error.message;
+      $('notice').classList.add('error');
+    } finally {
+      busy = false;
+      controls();
+    }
+  }
+  function act(action) {
+    if (animation === null && index === state.frames.length - 1 && !state.frames[index].done) request('/step', action);
+  }
+  document.querySelectorAll('[data-action]').forEach(button => button.onclick = event => {
+    const action = button.dataset.action;
+    if (action.startsWith('advance')) advance(Math.sign(Number(action.split(' ')[1])), event.shiftKey);
+    else act(action);
+  });
+  document.querySelectorAll('[data-reset]').forEach(button => button.onclick = () => request(button.dataset.reset));
+  addEventListener('keydown', event => {
+    if (!state.live || event.target.tagName === 'INPUT' || event.ctrlKey || event.metaKey) return;
+    if (event.target.tagName === 'BUTTON' && [' ', 'Enter'].includes(event.key)) return;
+    const run = keyboard.get(event.key.length === 1 ? event.key.toLowerCase() : event.key);
+    if (run) {
+      event.preventDefault();
+      run(event.shiftKey);
+    }
+  });
+  seek(state.live ? index : 0);
+}
+</script>
+</body>
+</html>

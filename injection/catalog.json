@@ -1,0 +1,107 @@
+[
+  {
+    "id": "baseline",
+    "label": "Baseline · seed 6",
+    "file": "seed-6-thin-wrist.json",
+    "seed": 6,
+    "outcome": "collected"
+  },
+  {
+    "id": "wide-light",
+    "label": "Wider arm, light skin · seed 30",
+    "file": "seed-30-wide-light.json",
+    "seed": 30,
+    "outcome": "robot contact"
+  },
+  {
+    "id": "white-42",
+    "label": "White skin · seed 42",
+    "file": "seed-42-wide-light.json",
+    "seed": 42,
+    "outcome": "missed vein"
+  },
+  {
+    "id": "white-42-sol",
+    "label": "White skin · seed 42 · GPT-6.1 Sol",
+    "file": "seed-42-wide-light-sol.json",
+    "seed": 42,
+    "outcome": "collected"
+  },
+  {
+    "id": "wide-dark",
+    "label": "Wider arm, dark skin · seed 18",
+    "file": "seed-18-wide-dark.json",
+    "seed": 18,
+    "outcome": "sideways motion in skin"
+  },
+  {
+    "id": "wide-dark-reprompt",
+    "label": "Wider arm, dark skin · seed 18 · revised prompt",
+    "file": "seed-18-wide-dark-reprompt.json",
+    "seed": 18,
+    "outcome": "sideways motion in skin"
+  },
+  {
+    "id": "wide-dark-sol",
+    "label": "Dark skin · seed 18 · GPT-6.1 Sol",
+    "file": "seed-18-wide-dark-sol.json",
+    "seed": 18,
+    "outcome": "robot contact"
+  },
+  {
+    "id": "dark-18-shallow-elbow-sol",
+    "label": "Dark skin · shallow elbow · seed 18 · GPT-6.1 Sol",
+    "file": "seed-18-shallow-elbow-sol.json",
+    "seed": 18,
+    "outcome": "collected"
+  },
+  {
+    "id": "dark-18-soft-visibility-sol",
+    "label": "Dark skin · softer visibility · seed 18 · GPT-6.1 Sol",
+    "file": "seed-18-soft-visibility-sol.json",
+    "seed": 18,
+    "outcome": "collected"
+  },
+  {
+    "id": "wide-medium",
+    "label": "Wider arm, medium skin · seed 23",
+    "file": "seed-23-wide-medium.json",
+    "seed": 23,
+    "outcome": "sideways motion in skin"
+  },
+  {
+    "id": "medium-61",
+    "label": "Medium skin · seed 61",
+    "file": "seed-61-wide-medium.json",
+    "seed": 61,
+    "outcome": "sideways motion in skin"
+  },
+  {
+    "id": "medium-61-sol",
+    "label": "Medium skin · seed 61 · GPT-6.1 Sol",
+    "file": "seed-61-wide-medium-sol.json",
+    "seed": 61,
+    "outcome": "collected"
+  },
+  {
+    "id": "surface-dark-18",
+    "label": "Surface controller · fixed target · dark skin · seed 18",
+    "file": "seed-18-surface-controller.json",
+    "seed": 18,
+    "outcome": "collected"
+  },
+  {
+    "id": "surface-white-42",
+    "label": "Surface controller · fixed target · white skin · seed 42",
+    "file": "seed-42-surface-controller.json",
+    "seed": 42,
+    "outcome": "collected"
+  },
+  {
+    "id": "surface-medium-61",
+    "label": "Surface controller · fixed target · medium skin · seed 61",
+    "file": "seed-61-surface-controller.json",
+    "seed": 61,
+    "outcome": "collected"
+  }
+]
